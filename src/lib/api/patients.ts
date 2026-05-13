@@ -85,9 +85,11 @@ export async function listPatientsWithStats(
 
   return ((data ?? []) as PatientRowWithInformes[]).map((p) => {
     const informes = p.informes ?? [];
-    const sorted = informes.toSorted(
-      (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),
-    );
+    const sorted = informes
+      .slice()
+      .sort(
+        (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),
+      );
     return {
       id: p.id,
       name: p.name,

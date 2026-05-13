@@ -20,6 +20,11 @@ jest.mock("expo-audio", () => ({
   setAudioModeAsync: () => Promise.resolve(),
 }));
 
+jest.mock("expo-keep-awake", () => ({
+  activateKeepAwakeAsync: jest.fn(),
+  deactivateKeepAwake: jest.fn(),
+}));
+
 jest.mock("react-native", () => ({
   Alert: { alert: jest.fn() },
 }));

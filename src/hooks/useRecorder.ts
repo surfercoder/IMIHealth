@@ -7,6 +7,9 @@ import {
   useAudioRecorder,
   useAudioRecorderState,
 } from "expo-audio";
+import { activateKeepAwakeAsync, deactivateKeepAwake } from "expo-keep-awake";
+
+const KEEP_AWAKE_TAG = "imi-recorder";
 
 export type RecorderPhase =
   | "idle"
@@ -84,6 +87,16 @@ export function useRecorder() {
       dispatch({ type: "tick", durationMs: Date.now() - startedAtRef.current! });
     }, 250);
     return () => clearInterval(tick);
+  }, [state.phase]);
+
+  useEffect(() => {
+    const shouldKeepAwake =
+      state.phase === "recording" || state.phase === "paused";
+    if (!shouldKeepAwake) return undefined;
+    activateKeepAwakeAsync(KEEP_AWAKE_TAG);
+    return () => {
+      deactivateKeepAwake(KEEP_AWAKE_TAG);
+    };
   }, [state.phase]);
 
   async function start() {

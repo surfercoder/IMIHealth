@@ -15,6 +15,7 @@ import {
   Text,
 } from "@/src/components/ui";
 import { InformeRow } from "@/src/components/InformeRow";
+import { DictarPedidosModal } from "@/src/components/DictarPedidosModal";
 import { usePatientDetail } from "@/src/hooks/usePatientDetail";
 import { deletePatient } from "@/src/lib/api/patients";
 import { getDoctorInitials } from "@/src/utils/avatar";
@@ -31,6 +32,7 @@ export default function PatientDetailScreen() {
   const lang = i18n.language ?? "es";
   const { patient, informes, loading } = usePatientDetail(params.id);
   const [deleting, setDeleting] = useState(false);
+  const [dictarOpen, setDictarOpen] = useState(false);
 
   async function handleDelete() {
     Alert.alert(
@@ -186,6 +188,16 @@ export default function PatientDetailScreen() {
                 fullWidth
                 size="lg"
               />
+              <Button
+                title={t("dictarPedidos.trigger")}
+                variant="outline"
+                onPress={() => setDictarOpen(true)}
+                leftIcon={
+                  <Icon name="mic" size={18} color={colors.foreground} />
+                }
+                fullWidth
+                size="lg"
+              />
               <View style={styles.historyHeader}>
                 <Text variant="title" style={styles.historyTitle}>
                   {t("patientPage.history")}
@@ -203,6 +215,15 @@ export default function PatientDetailScreen() {
           renderItem={renderItem}
         />
       )}
+      {patient ? (
+        <DictarPedidosModal
+          visible={dictarOpen}
+          onClose={() => setDictarOpen(false)}
+          patientId={patient.id}
+          patientName={patient.name}
+          patientPhone={patient.phone ?? null}
+        />
+      ) : null}
     </Screen>
   );
 }

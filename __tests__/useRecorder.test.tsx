@@ -23,6 +23,13 @@ const mockAudioPermissionRequest: { current: () => Promise<{ granted: boolean }>
   current: async () => ({ granted: true }),
 };
 
+const mockActivateKeepAwake = jest.fn();
+const mockDeactivateKeepAwake = jest.fn();
+jest.mock("expo-keep-awake", () => ({
+  activateKeepAwakeAsync: (tag: string) => mockActivateKeepAwake(tag),
+  deactivateKeepAwake: (tag: string) => mockDeactivateKeepAwake(tag),
+}));
+
 jest.mock("react-native", () => ({
   Alert: { alert: jest.fn() },
 }));
@@ -38,6 +45,8 @@ beforeEach(() => {
   };
   mockRecorderState = { isRecording: false };
   mockAudioPermissionRequest.current = async () => ({ granted: true });
+  mockActivateKeepAwake.mockClear();
+  mockDeactivateKeepAwake.mockClear();
 });
 
 describe("formatDuration", () => {
@@ -110,5 +119,32 @@ describe("useRecorder", () => {
     });
     act(() => result.current.reset());
     expect(result.current.phase).toBe("idle");
+  });
+
+  it("keeps the screen awake while recording and releases it on stop", async () => {
+    mockRecorderState = { isRecording: true };
+    const { result } = renderHook(() => useRecorder());
+    await waitFor(() => expect(result.current.phase).toBe("idle"));
+    expect(mockActivateKeepAwake).not.toHaveBeenCalled();
+    await act(async () => {
+      await result.current.start();
+    });
+    expect(mockActivateKeepAwake).toHaveBeenCalledWith("imi-recorder");
+    expect(mockDeactivateKeepAwake).not.toHaveBeenCalled();
+    await act(async () => {
+      await result.current.stop();
+    });
+    expect(mockDeactivateKeepAwake).toHaveBeenCalledWith("imi-recorder");
+  });
+
+  it("releases keep-awake on unmount if still recording", async () => {
+    const { result, unmount } = renderHook(() => useRecorder());
+    await waitFor(() => expect(result.current.phase).toBe("idle"));
+    await act(async () => {
+      await result.current.start();
+    });
+    expect(mockActivateKeepAwake).toHaveBeenCalledTimes(1);
+    unmount();
+    expect(mockDeactivateKeepAwake).toHaveBeenCalledWith("imi-recorder");
   });
 });

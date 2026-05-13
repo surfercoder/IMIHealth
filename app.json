@@ -13,6 +13,7 @@
       "bundleIdentifier": "com.imihealth.app",
       "infoPlist": {
         "NSMicrophoneUsageDescription": "IMI Health uses the microphone to record consultations so we can transcribe and generate medical reports.",
+        "NSSpeechRecognitionUsageDescription": "IMI Health uses speech recognition to transcribe medical orders in real time.",
         "NSPhotoLibraryUsageDescription": "IMI Health needs photo library access to set your profile picture.",
         "NSCameraUsageDescription": "IMI Health can use the camera to capture your profile picture.",
         "UIBackgroundModes": [
@@ -61,6 +62,13 @@
         "expo-audio",
         {
           "microphonePermission": "IMI Health uses the microphone to record consultations so we can transcribe and generate medical reports."
+        }
+      ],
+      [
+        "expo-speech-recognition",
+        {
+          "microphonePermission": "IMI Health uses the microphone to transcribe medical orders as you dictate them.",
+          "speechRecognitionPermission": "IMI Health uses speech recognition to transcribe medical orders in real time."
         }
       ],
       [

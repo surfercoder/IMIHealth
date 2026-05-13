@@ -111,6 +111,10 @@ jest.mock("@/src/lib/supabase", () => ({
   supabase: { auth: {} },
 }));
 
+jest.mock("@/src/components/DictarPedidosModal", () => ({
+  DictarPedidosModal: () => null,
+}));
+
 import EditPatientScreen from "@/app/(app)/patient/[id]/edit";
 import PatientDetailScreen from "@/app/(app)/patient/[id]/index";
 import { LanguageSwitcher } from "@/src/components/LanguageSwitcher";

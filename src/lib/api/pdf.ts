@@ -15,7 +15,12 @@ type PdfKind =
   | { kind: "certificado"; informeId: string; options?: CertificadoPdfOptions }
   | { kind: "pedido"; informeId: string; item?: string }
   | { kind: "pedidos"; informeId: string; items?: string[] }
-  | { kind: "pedidos-patient"; patientId: string };
+  | {
+      kind: "pedidos-patient";
+      patientId: string;
+      items?: string[];
+      diagnostico?: string | null;
+    };
 
 function buildUrl(target: PdfKind): { url: string; filename: string } {
   const base = getApiBaseUrl();
@@ -60,11 +65,17 @@ function buildUrl(target: PdfKind): { url: string; filename: string } {
         filename: `pedidos-${target.informeId}.pdf`,
       };
     }
-    case "pedidos-patient":
+    case "pedidos-patient": {
+      const params = new URLSearchParams({ patientId: target.patientId });
+      for (const item of target.items ?? []) params.append("item", item);
+      if (target.diagnostico && target.diagnostico.trim()) {
+        params.set("diagnostico", target.diagnostico.trim());
+      }
       return {
-        url: `${base}/api/pdf/pedidos-patient?patientId=${encodeURIComponent(target.patientId)}`,
+        url: `${base}/api/pdf/pedidos-patient?${params.toString()}`,
         filename: `pedidos-paciente-${target.patientId}.pdf`,
       };
+    }
   }
 }
 

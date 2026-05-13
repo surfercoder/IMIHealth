@@ -30,6 +30,15 @@ interface SendPedidosParams extends SendInformeParams {
   pedidoItems: string[];
 }
 
+interface SendPedidosPatientParams {
+  to: string;
+  patientId: string;
+  patientName: string;
+  locale: string;
+  pedidoItems: string[];
+  diagnostico: string | null;
+}
+
 /**
  * Sends the patient inform via WhatsApp. Server generates PDF + PNG and uses
  * the doctor's template. Matches the web payload shape (see
@@ -66,5 +75,19 @@ export async function sendPedidosWhatsApp(params: SendPedidosParams): Promise<Se
     patientName: params.patientName,
     locale: params.locale,
     pedidoItems: params.pedidoItems,
+  });
+}
+
+export async function sendPedidosPatientWhatsApp(
+  params: SendPedidosPatientParams,
+): Promise<SendResponse> {
+  return api.post<SendResponse>("/api/send-whatsapp", {
+    to: params.to,
+    type: "pedidos-patient",
+    patientId: params.patientId,
+    patientName: params.patientName,
+    locale: params.locale,
+    pedidoItems: params.pedidoItems,
+    diagnostico: params.diagnostico,
   });
 }

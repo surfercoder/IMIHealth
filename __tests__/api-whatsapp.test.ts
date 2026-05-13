@@ -1,6 +1,7 @@
 import {
   sendCertificadoWhatsApp,
   sendInformeWhatsApp,
+  sendPedidosPatientWhatsApp,
   sendPedidosWhatsApp,
 } from "@/src/lib/api/whatsapp";
 
@@ -50,6 +51,41 @@ describe("whatsapp api", () => {
     expect(post).toHaveBeenCalledWith(
       "/api/send-whatsapp",
       expect.objectContaining({ type: "pedidos", pedidoItems: ["a", "b"] }),
+    );
+  });
+
+  it("sendPedidosPatientWhatsApp posts patientId, items and diagnostico", async () => {
+    await sendPedidosPatientWhatsApp({
+      to: "+1",
+      patientId: "pat",
+      patientName: "Jane",
+      locale: "es",
+      pedidoItems: ["MRI"],
+      diagnostico: "lumbalgia",
+    });
+    expect(post).toHaveBeenCalledWith(
+      "/api/send-whatsapp",
+      expect.objectContaining({
+        type: "pedidos-patient",
+        patientId: "pat",
+        pedidoItems: ["MRI"],
+        diagnostico: "lumbalgia",
+      }),
+    );
+  });
+
+  it("sendPedidosPatientWhatsApp forwards null diagnostico", async () => {
+    await sendPedidosPatientWhatsApp({
+      to: "+1",
+      patientId: "pat",
+      patientName: "Jane",
+      locale: "es",
+      pedidoItems: ["MRI"],
+      diagnostico: null,
+    });
+    expect(post).toHaveBeenCalledWith(
+      "/api/send-whatsapp",
+      expect.objectContaining({ diagnostico: null }),
     );
   });
 });

@@ -82,6 +82,9 @@ jest.mock("@/src/hooks/usePatients", () => ({
 }));
 
 jest.mock("@/src/components/AppHeader", () => ({ AppHeader: () => null }));
+jest.mock("@/src/components/DictarPedidosModal", () => ({
+  DictarPedidosModal: () => null,
+}));
 
 import PatientDetailScreen from "@/app/(app)/patient/[id]/index";
 import PatientsTab from "@/app/(app)/(tabs)/patients";

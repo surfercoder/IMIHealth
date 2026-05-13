@@ -31,6 +31,7 @@ export type IconName =
   | "mail-open-outline"
   | "mail-outline"
   | "mic"
+  | "pause"
   | "people"
   | "people-outline"
   | "refresh"
@@ -268,6 +269,13 @@ export function Icon({ name, size = 24, color = "#000", onPress }: IconProps): J
         <Svg {...common}>
           <Path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z" {...filledProps} />
           <Path d="M19 10v2a7 7 0 0 1-14 0v-2M12 19v4M8 23h8" {...lineProps} />
+        </Svg>
+      );
+    case "pause":
+      return (
+        <Svg {...common}>
+          <Rect width={4} height={16} x={6} y={4} rx={1} {...filledProps} />
+          <Rect width={4} height={16} x={14} y={4} rx={1} {...filledProps} />
         </Svg>
       );
     case "people":

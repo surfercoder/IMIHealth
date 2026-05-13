@@ -103,6 +103,33 @@ describe("sharePdf", () => {
     expect(mockDownloadAsync.mock.calls[0][0]).toContain("patientId=p");
   });
 
+  it("builds pedidos-patient URL with items and diagnostico", async () => {
+    mockIsAvailable.mockResolvedValue(true);
+    mockDownloadAsync.mockResolvedValue({ uri: "u", status: 200 });
+    await sharePdf({
+      kind: "pedidos-patient",
+      patientId: "p",
+      items: ["MRI", "X-Ray"],
+      diagnostico: "  lumbalgia  ",
+    });
+    const url = mockDownloadAsync.mock.calls[0][0];
+    expect(url).toContain("item=MRI");
+    expect(url).toContain("item=X-Ray");
+    expect(url).toContain("diagnostico=lumbalgia");
+  });
+
+  it("omits diagnostico when blank for pedidos-patient", async () => {
+    mockIsAvailable.mockResolvedValue(true);
+    mockDownloadAsync.mockResolvedValue({ uri: "u", status: 200 });
+    await sharePdf({
+      kind: "pedidos-patient",
+      patientId: "p",
+      items: ["A"],
+      diagnostico: "   ",
+    });
+    expect(mockDownloadAsync.mock.calls[0][0]).not.toContain("diagnostico=");
+  });
+
   it("throws on non-2xx download", async () => {
     mockIsAvailable.mockResolvedValue(true);
     mockDownloadAsync.mockResolvedValue({ uri: "u", status: 500 });

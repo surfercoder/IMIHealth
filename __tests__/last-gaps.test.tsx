@@ -37,6 +37,10 @@ jest.mock("@/src/lib/api/patients", () => ({
   deletePatient: jest.fn(),
 }));
 
+jest.mock("@/src/components/DictarPedidosModal", () => ({
+  DictarPedidosModal: () => null,
+}));
+
 describe("PatientDetailScreen new-consult button", () => {
   beforeEach(() => {
     mockPush.mockReset();
@@ -170,6 +174,10 @@ describe("useRecorder tick action", () => {
     jest.doMock("react-native/Libraries/Alert/Alert", () => ({
       __esModule: true,
       default: { alert: jest.fn() },
+    }));
+    jest.doMock("expo-keep-awake", () => ({
+      activateKeepAwakeAsync: jest.fn(),
+      deactivateKeepAwake: jest.fn(),
     }));
 
     const { useRecorder } = require("@/src/hooks/useRecorder");

@@ -63,6 +63,10 @@ jest.mock("react-native/Libraries/Alert/Alert", () => ({
   default: { alert: (...a: unknown[]) => mockAlert(...a) },
 }));
 
+jest.mock("@/src/components/DictarPedidosModal", () => ({
+  DictarPedidosModal: () => null,
+}));
+
 import PatientDetailScreen from "@/app/(app)/patient/[id]/index";
 
 const patient = {

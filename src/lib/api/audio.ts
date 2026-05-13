@@ -27,7 +27,7 @@ export async function uploadRecording(
   const { error } = await supabase.storage
     .from(AUDIO_BUCKET)
     .upload(path, bytes, {
-      contentType: "audio/m4a",
+      contentType: "audio/mp4",
       upsert: true,
     });
   if (error) {

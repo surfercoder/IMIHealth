@@ -1,9 +1,40 @@
-import i18nDefault, { type InitOptions, type i18n as I18nInstance } from "i18next";
+import i18nDefault, {
+  type InitOptions,
+  type PostProcessorModule,
+  type i18n as I18nInstance,
+} from "i18next";
 import { initReactI18next } from "react-i18next";
+import IntlMessageFormat from "intl-messageformat";
 import * as Localization from "expo-localization";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import en from "../../messages/en.json";
 import es from "../../messages/es.json";
+
+// Runs every translation through intl-messageformat so we can use ICU
+// MessageFormat (`{count, plural, ...}`, `{name}`) in the JSON files — the
+// same format next-intl reads on the web. The shared JSON stays in sync
+// across platforms without having to maintain two formats.
+const icuPostProcessor: PostProcessorModule = {
+  type: "postProcessor",
+  name: "icu",
+  process(value, _key, options) {
+    if (typeof value !== "string" || !value.includes("{")) return value;
+    try {
+      const lng =
+        (options && (options.lng as string)) ||
+        (options && (options.lngs as string[])?.[0]) ||
+        "es";
+      return String(
+        new IntlMessageFormat(value, lng, undefined, { ignoreTag: true }).format(
+          options as Record<string, unknown>,
+        ),
+      );
+    } catch (err) {
+      console.warn("[i18n] ICU format failed", { value, err });
+      return value;
+    }
+  },
+};
 
 const i18n: I18nInstance = i18nDefault;
 
@@ -41,12 +72,12 @@ export async function initI18n() {
       en: { translation: en },
       es: { translation: es },
     },
-    interpolation: { escapeValue: false, prefix: "{", suffix: "}" },
+    interpolation: { escapeValue: false },
     returnNull: false,
-    compatibilityJSON: "v4",
+    postProcess: ["icu"],
   };
 
-  await i18n.use(initReactI18next).init(options);
+  await i18n.use(icuPostProcessor).use(initReactI18next).init(options);
   initialized = true;
   return i18n;
 }
