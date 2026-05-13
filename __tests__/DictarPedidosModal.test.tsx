@@ -12,13 +12,14 @@ jest.mock("react-native-svg", () => {
   };
 });
 
+let mockLanguage: string | undefined = "es";
 jest.mock("react-i18next", () => ({
   useTranslation: () => ({
     t: (k: string, opts?: { count?: number; patientName?: string }) =>
       opts && (opts.count !== undefined || opts.patientName !== undefined)
         ? `${k}:${JSON.stringify(opts)}`
         : k,
-    i18n: { language: "es" },
+    i18n: { language: mockLanguage },
   }),
 }));
 
@@ -28,39 +29,32 @@ jest.mock("react-native/Libraries/Alert/Alert", () => ({
   default: { alert: (...a: unknown[]) => mockAlert(...a) },
 }));
 
-const mockRecorderStart = jest.fn();
-const mockRecorderStop = jest.fn();
-const mockRecorderReset = jest.fn();
-let mockRecorderPhase: string = "idle";
-jest.mock("@/src/hooks/useRecorder", () => ({
-  useRecorder: () => ({
-    phase: mockRecorderPhase,
-    durationMs: 0,
-    start: (...a: unknown[]) => mockRecorderStart(...a),
-    stop: (...a: unknown[]) => mockRecorderStop(...a),
-    reset: (...a: unknown[]) => mockRecorderReset(...a),
+const mockDictationStart = jest.fn();
+const mockDictationPause = jest.fn();
+const mockDictationResume = jest.fn();
+const mockDictationStop = jest.fn();
+const mockDictationReset = jest.fn();
+let mockDictationPhase: "idle" | "recording" | "paused" = "idle";
+let mockDictationTranscript = "";
+let mockDictationError: string | null = null;
+let mockDictationDurationMs = 0;
+
+jest.mock("@/src/hooks/useDictation", () => ({
+  useDictation: () => ({
+    phase: mockDictationPhase,
+    durationMs: mockDictationDurationMs,
+    liveTranscript: mockDictationTranscript,
+    error: mockDictationError,
+    start: (...a: unknown[]) => mockDictationStart(...a),
+    pause: (...a: unknown[]) => mockDictationPause(...a),
+    resume: (...a: unknown[]) => mockDictationResume(...a),
+    stop: (...a: unknown[]) => mockDictationStop(...a),
+    reset: (...a: unknown[]) => mockDictationReset(...a),
   }),
+}));
+
+jest.mock("@/src/hooks/useRecorder", () => ({
   formatDuration: (ms: number) => `${ms}ms`,
-}));
-
-const mockUser = { id: "doc-1" };
-jest.mock("@/src/providers/AuthProvider", () => ({
-  useAuth: () => ({ user: mockUser }),
-}));
-
-const mockCreateInforme = jest.fn();
-jest.mock("@/src/lib/api/informes", () => ({
-  createInforme: (...a: unknown[]) => mockCreateInforme(...a),
-}));
-
-const mockUploadRecording = jest.fn();
-jest.mock("@/src/lib/api/audio", () => ({
-  uploadRecording: (...a: unknown[]) => mockUploadRecording(...a),
-}));
-
-const mockTranscribeAudio = jest.fn();
-jest.mock("@/src/lib/api/transcribe", () => ({
-  transcribeAudio: (...a: unknown[]) => mockTranscribeAudio(...a),
 }));
 
 const mockSharePdf = jest.fn();
@@ -77,71 +71,199 @@ import { DictarPedidosModal } from "@/src/components/DictarPedidosModal";
 
 beforeEach(() => {
   mockAlert.mockReset();
-  mockRecorderStart.mockReset();
-  mockRecorderStop.mockReset();
-  mockRecorderReset.mockReset();
-  mockCreateInforme.mockReset();
-  mockUploadRecording.mockReset();
-  mockTranscribeAudio.mockReset();
+  mockDictationStart.mockReset().mockResolvedValue(undefined);
+  mockDictationPause.mockReset();
+  mockDictationResume.mockReset().mockResolvedValue(undefined);
+  mockDictationStop.mockReset().mockReturnValue("");
+  mockDictationReset.mockReset();
   mockSharePdf.mockReset();
   mockSendPedidosPatient.mockReset();
-  mockRecorderPhase = "idle";
+  mockDictationPhase = "idle";
+  mockDictationTranscript = "";
+  mockDictationError = null;
+  mockDictationDurationMs = 0;
+  mockLanguage = "es";
 });
 
-function renderModal(overrides: Partial<React.ComponentProps<typeof DictarPedidosModal>> = {}) {
+function renderModal(
+  overrides: Partial<React.ComponentProps<typeof DictarPedidosModal>> = {},
+) {
   return render(
     <DictarPedidosModal
       visible
       onClose={overrides.onClose ?? jest.fn()}
       patientId={overrides.patientId ?? "pat-1"}
       patientName={overrides.patientName ?? "Jane"}
-      patientPhone={"patientPhone" in overrides ? overrides.patientPhone! : "+5491111"}
+      patientPhone={
+        "patientPhone" in overrides ? overrides.patientPhone! : "+5491111"
+      }
     />,
   );
 }
 
+async function stopAndReviewWith(transcript: string) {
+  mockDictationPhase = "recording";
+  mockDictationStop.mockReturnValueOnce(transcript);
+  const utils = renderModal();
+  await act(async () => {
+    fireEvent.press(utils.getByLabelText("dictarPedidos.btnStop"));
+  });
+  return utils;
+}
+
 describe("DictarPedidosModal", () => {
-  it("renders idle instructions", () => {
-    const { getByText } = renderModal();
+  it("renders idle instructions and start button", () => {
+    const { getByText, getByLabelText } = renderModal();
     expect(getByText("dictarPedidos.title")).toBeTruthy();
     expect(getByText("dictarPedidos.howItWorks")).toBeTruthy();
     expect(getByText("dictarPedidos.step1")).toBeTruthy();
+    expect(getByLabelText("dictarPedidos.btnStart")).toBeTruthy();
   });
 
-  it("starts recording when start pressed", () => {
+  it("starts recording when start pressed", async () => {
     const { getByLabelText } = renderModal();
-    fireEvent.press(getByLabelText("dictarPedidos.btnStart"));
-    expect(mockRecorderStart).toHaveBeenCalled();
+    await act(async () => {
+      fireEvent.press(getByLabelText("dictarPedidos.btnStart"));
+    });
+    expect(mockDictationStart).toHaveBeenCalledWith({ language: "es-419" });
+  });
+
+  it("starts recording with en-US when i18n language is English", async () => {
+    mockLanguage = "en";
+    const { getByLabelText } = renderModal();
+    await act(async () => {
+      fireEvent.press(getByLabelText("dictarPedidos.btnStart"));
+    });
+    expect(mockDictationStart).toHaveBeenCalledWith({ language: "en-US" });
+  });
+
+  it("starts recording with default es-419 when i18n language is undefined", async () => {
+    mockLanguage = undefined;
+    const { getByLabelText } = renderModal();
+    await act(async () => {
+      fireEvent.press(getByLabelText("dictarPedidos.btnStart"));
+    });
+    expect(mockDictationStart).toHaveBeenCalledWith({ language: "es-419" });
+  });
+
+  it("starts recording with default es-419 when locale code is empty", async () => {
+    mockLanguage = "";
+    const { getByLabelText } = renderModal();
+    await act(async () => {
+      fireEvent.press(getByLabelText("dictarPedidos.btnStart"));
+    });
+    expect(mockDictationStart).toHaveBeenCalledWith({ language: "es-419" });
   });
 
   it("alerts when start throws", async () => {
-    mockRecorderStart.mockRejectedValueOnce(new Error("denied"));
+    mockDictationStart.mockRejectedValueOnce(new Error("denied"));
     const { getByLabelText } = renderModal();
-    fireEvent.press(getByLabelText("dictarPedidos.btnStart"));
+    await act(async () => {
+      fireEvent.press(getByLabelText("dictarPedidos.btnStart"));
+    });
     await waitFor(() => expect(mockAlert).toHaveBeenCalled());
   });
 
-  it("full flow: record → upload → transcribe → review → generate → success", async () => {
-    mockRecorderStop.mockResolvedValue({ uri: "file://r.m4a", durationMs: 1 });
-    mockCreateInforme.mockResolvedValue({ id: "inf-1" });
-    mockUploadRecording.mockResolvedValue("doc/inf/recording.m4a");
-    mockTranscribeAudio.mockResolvedValue(
+  it("alerts when start throws with non-Error rejection", async () => {
+    mockDictationStart.mockRejectedValueOnce("plain string");
+    const { getByLabelText } = renderModal();
+    await act(async () => {
+      fireEvent.press(getByLabelText("dictarPedidos.btnStart"));
+    });
+    await waitFor(() => expect(mockAlert).toHaveBeenCalled());
+  });
+
+  it("recording phase shows pause/stop and timer; pause is invoked", () => {
+    mockDictationPhase = "recording";
+    mockDictationDurationMs = 1500;
+    const { getByLabelText, getByText } = renderModal();
+    expect(getByText("1500ms")).toBeTruthy();
+    expect(getByText("dictarPedidos.recordingHint")).toBeTruthy();
+    fireEvent.press(getByLabelText("dictarPedidos.btnPause"));
+    expect(mockDictationPause).toHaveBeenCalled();
+  });
+
+  it("paused phase shows resume and stop; resume is invoked", async () => {
+    mockDictationPhase = "paused";
+    const { getByLabelText, getByText } = renderModal();
+    expect(getByText("dictarPedidos.pausedHint")).toBeTruthy();
+    await act(async () => {
+      fireEvent.press(getByLabelText("dictarPedidos.btnResume"));
+    });
+    expect(mockDictationResume).toHaveBeenCalled();
+  });
+
+  it("alerts when resume throws", async () => {
+    mockDictationPhase = "paused";
+    mockDictationResume.mockRejectedValueOnce(new Error("oops"));
+    const { getByLabelText } = renderModal();
+    await act(async () => {
+      fireEvent.press(getByLabelText("dictarPedidos.btnResume"));
+    });
+    await waitFor(() => expect(mockAlert).toHaveBeenCalled());
+  });
+
+  it("alerts when resume throws with non-Error rejection", async () => {
+    mockDictationPhase = "paused";
+    mockDictationResume.mockRejectedValueOnce("not-error");
+    const { getByLabelText } = renderModal();
+    await act(async () => {
+      fireEvent.press(getByLabelText("dictarPedidos.btnResume"));
+    });
+    await waitFor(() => expect(mockAlert).toHaveBeenCalled());
+  });
+
+  it("live transcript card appears while recording with content", () => {
+    mockDictationPhase = "recording";
+    mockDictationTranscript = "hello world";
+    const { getByText } = renderModal();
+    expect(getByText("dictarPedidos.liveTranscript")).toBeTruthy();
+    expect(getByText("hello world")).toBeTruthy();
+  });
+
+  it("error card appears when dictation has error", () => {
+    mockDictationPhase = "idle";
+    mockDictationError = "permission denied";
+    const { getByText } = renderModal();
+    expect(getByText("dictarPedidos.micErrorTitle")).toBeTruthy();
+    expect(getByText("permission denied")).toBeTruthy();
+  });
+
+  it("stop transitions to review with parsed items + diagnostico", async () => {
+    const utils = await stopAndReviewWith(
       "Solicito hemograma. Solicito orina. Diagnostico lumbalgia",
     );
-    mockSharePdf.mockResolvedValue(undefined);
-    mockRecorderPhase = "recording";
+    await waitFor(() =>
+      expect(utils.getByText("dictarPedidos.itemsLabel")).toBeTruthy(),
+    );
+    expect(utils.getByDisplayValue("- hemograma\n- orina")).toBeTruthy();
+    expect(utils.getByDisplayValue("lumbalgia")).toBeTruthy();
+  });
 
+  it("generate button is disabled when no items, so press is a no-op", async () => {
+    mockDictationPhase = "recording";
+    mockDictationStop.mockReturnValueOnce("");
     const { getByLabelText, getByText } = renderModal();
     await act(async () => {
       fireEvent.press(getByLabelText("dictarPedidos.btnStop"));
     });
-    await waitFor(() => expect(mockTranscribeAudio).toHaveBeenCalled());
     await waitFor(() =>
       expect(getByText("dictarPedidos.itemsLabel")).toBeTruthy(),
     );
+    fireEvent.press(getByText(/^dictarPedidos\.generate:/));
+    expect(mockSharePdf).not.toHaveBeenCalled();
+  });
 
+  it("full flow: review → generate → success", async () => {
+    mockSharePdf.mockResolvedValue(undefined);
+    const utils = await stopAndReviewWith(
+      "Solicito hemograma. Solicito orina. Diagnostico lumbalgia",
+    );
+    await waitFor(() =>
+      expect(utils.getByText("dictarPedidos.itemsLabel")).toBeTruthy(),
+    );
     await act(async () => {
-      fireEvent.press(getByText(/^dictarPedidos\.generate:/));
+      fireEvent.press(utils.getByText(/^dictarPedidos\.generate:/));
     });
     await waitFor(() =>
       expect(mockSharePdf).toHaveBeenCalledWith(
@@ -154,284 +276,336 @@ describe("DictarPedidosModal", () => {
       ),
     );
     await waitFor(() =>
-      expect(getByText("dictarPedidos.successMessage")).toBeTruthy(),
+      expect(utils.getByText("dictarPedidos.successMessage")).toBeTruthy(),
     );
   });
 
-  it("alerts when stop produces no URI", async () => {
-    mockRecorderStop.mockResolvedValue({ uri: null, durationMs: 0 });
-    mockRecorderPhase = "recording";
-    const { getByLabelText } = renderModal();
-    await act(async () => {
-      fireEvent.press(getByLabelText("dictarPedidos.btnStop"));
-    });
-    await waitFor(() => expect(mockAlert).toHaveBeenCalled());
-    expect(mockRecorderReset).toHaveBeenCalled();
-  });
-
-  it("alerts when upload throws", async () => {
-    mockRecorderStop.mockResolvedValue({ uri: "file://r.m4a", durationMs: 1 });
-    mockCreateInforme.mockResolvedValue({ id: "inf-1" });
-    mockUploadRecording.mockRejectedValue(new Error("nope"));
-    mockRecorderPhase = "recording";
-
-    const { getByLabelText } = renderModal();
-    await act(async () => {
-      fireEvent.press(getByLabelText("dictarPedidos.btnStop"));
-    });
-    await waitFor(() => expect(mockAlert).toHaveBeenCalled());
-  });
-
-  it("recovers to review when generate PDF fails", async () => {
-    mockRecorderStop.mockResolvedValue({ uri: "file://r.m4a", durationMs: 1 });
-    mockCreateInforme.mockResolvedValue({ id: "inf-1" });
-    mockUploadRecording.mockResolvedValue("p");
-    mockTranscribeAudio.mockResolvedValue("Solicito X");
+  it("generate failure returns to review and alerts", async () => {
     mockSharePdf.mockRejectedValueOnce(new Error("pdf fail"));
-    mockRecorderPhase = "recording";
-
-    const { getByLabelText, getByText } = renderModal();
-    await act(async () => {
-      fireEvent.press(getByLabelText("dictarPedidos.btnStop"));
-    });
+    const utils = await stopAndReviewWith("Solicito X");
     await waitFor(() =>
-      expect(getByText("dictarPedidos.itemsLabel")).toBeTruthy(),
+      expect(utils.getByText("dictarPedidos.itemsLabel")).toBeTruthy(),
     );
-
     await act(async () => {
-      fireEvent.press(getByText(/^dictarPedidos\.generate:/));
+      fireEvent.press(utils.getByText(/^dictarPedidos\.generate:/));
     });
     await waitFor(() => expect(mockAlert).toHaveBeenCalled());
-    expect(getByText("dictarPedidos.itemsLabel")).toBeTruthy();
+    expect(utils.getByText("dictarPedidos.itemsLabel")).toBeTruthy();
   });
 
-  it("recordAgain returns to idle and resets recorder", async () => {
-    mockRecorderStop.mockResolvedValue({ uri: "file://r.m4a", durationMs: 1 });
-    mockCreateInforme.mockResolvedValue({ id: "inf-1" });
-    mockUploadRecording.mockResolvedValue("p");
-    mockTranscribeAudio.mockResolvedValue("Solicito X");
-    mockRecorderPhase = "recording";
-
-    const { getByLabelText, getByText } = renderModal();
-    await act(async () => {
-      fireEvent.press(getByLabelText("dictarPedidos.btnStop"));
-    });
+  it("generate failure with non-Error rejection alerts", async () => {
+    mockSharePdf.mockRejectedValueOnce("plain");
+    const utils = await stopAndReviewWith("Solicito X");
     await waitFor(() =>
-      expect(getByText("dictarPedidos.recordAgain")).toBeTruthy(),
+      expect(utils.getByText("dictarPedidos.itemsLabel")).toBeTruthy(),
     );
-    fireEvent.press(getByText("dictarPedidos.recordAgain"));
-    expect(mockRecorderReset).toHaveBeenCalled();
+    await act(async () => {
+      fireEvent.press(utils.getByText(/^dictarPedidos\.generate:/));
+    });
+    await waitFor(() => expect(mockAlert).toHaveBeenCalled());
   });
 
-  it("close button triggers onClose and resets recorder", () => {
+  it("recordAgain button resets dictation and returns to idle", async () => {
+    const utils = await stopAndReviewWith("Solicito X");
+    await waitFor(() =>
+      expect(utils.getByText("dictarPedidos.recordAgain")).toBeTruthy(),
+    );
+    fireEvent.press(utils.getByText("dictarPedidos.recordAgain"));
+    expect(mockDictationReset).toHaveBeenCalled();
+  });
+
+  it("close from idle triggers onClose and resets dictation", () => {
     const onClose = jest.fn();
     const { getByLabelText } = renderModal({ onClose });
     fireEvent.press(getByLabelText("common.cancel"));
     expect(onClose).toHaveBeenCalled();
-    expect(mockRecorderReset).toHaveBeenCalled();
+    expect(mockDictationReset).toHaveBeenCalled();
   });
 
-  it("close while recording stops recorder", () => {
+  it("close while recording also resets dictation", () => {
     const onClose = jest.fn();
-    mockRecorderStop.mockResolvedValue({ uri: null, durationMs: 0 });
-    mockRecorderPhase = "recording";
+    mockDictationPhase = "recording";
     const { getByLabelText } = renderModal({ onClose });
     fireEvent.press(getByLabelText("common.cancel"));
-    expect(mockRecorderStop).toHaveBeenCalled();
+    expect(mockDictationReset).toHaveBeenCalled();
     expect(onClose).toHaveBeenCalled();
   });
 
-  it("success step: view PDF button calls sharePdf again", async () => {
-    mockRecorderStop.mockResolvedValue({ uri: "file://r.m4a", durationMs: 1 });
-    mockCreateInforme.mockResolvedValue({ id: "inf-1" });
-    mockUploadRecording.mockResolvedValue("p");
-    mockTranscribeAudio.mockResolvedValue("Solicito hemograma");
+  it("success step: view PDF calls sharePdf with current state", async () => {
     mockSharePdf.mockResolvedValue(undefined);
-    mockRecorderPhase = "recording";
-
-    const { getByLabelText, getByText } = renderModal();
-    await act(async () => {
-      fireEvent.press(getByLabelText("dictarPedidos.btnStop"));
-    });
+    const utils = await stopAndReviewWith(
+      "Solicito hemograma. Diagnostico lumbalgia",
+    );
     await waitFor(() =>
-      expect(getByText("dictarPedidos.itemsLabel")).toBeTruthy(),
+      expect(utils.getByText("dictarPedidos.itemsLabel")).toBeTruthy(),
     );
     await act(async () => {
-      fireEvent.press(getByText(/^dictarPedidos\.generate:/));
+      fireEvent.press(utils.getByText(/^dictarPedidos\.generate:/));
     });
     await waitFor(() =>
-      expect(getByText("dictarPedidos.successMessage")).toBeTruthy(),
+      expect(utils.getByText("dictarPedidos.successMessage")).toBeTruthy(),
     );
 
     mockSharePdf.mockClear();
     await act(async () => {
-      fireEvent.press(getByText("dictarPedidos.viewOnline"));
+      fireEvent.press(utils.getByText("dictarPedidos.viewOnline"));
     });
     await waitFor(() => expect(mockSharePdf).toHaveBeenCalled());
   });
 
   it("success step: view PDF alerts on failure", async () => {
-    mockRecorderStop.mockResolvedValue({ uri: "file://r.m4a", durationMs: 1 });
-    mockCreateInforme.mockResolvedValue({ id: "inf-1" });
-    mockUploadRecording.mockResolvedValue("p");
-    mockTranscribeAudio.mockResolvedValue("Solicito hemograma");
     mockSharePdf.mockResolvedValueOnce(undefined);
-    mockRecorderPhase = "recording";
-
-    const { getByLabelText, getByText } = renderModal();
+    const utils = await stopAndReviewWith("Solicito hemograma");
+    await waitFor(() =>
+      expect(utils.getByText("dictarPedidos.itemsLabel")).toBeTruthy(),
+    );
     await act(async () => {
-      fireEvent.press(getByLabelText("dictarPedidos.btnStop"));
-    });
-    await act(async () => {
-      fireEvent.press(getByText(/^dictarPedidos\.generate:/));
+      fireEvent.press(utils.getByText(/^dictarPedidos\.generate:/));
     });
     await waitFor(() =>
-      expect(getByText("dictarPedidos.successMessage")).toBeTruthy(),
+      expect(utils.getByText("dictarPedidos.successMessage")).toBeTruthy(),
     );
     mockSharePdf.mockRejectedValueOnce(new Error("boom"));
     await act(async () => {
-      fireEvent.press(getByText("dictarPedidos.viewOnline"));
+      fireEvent.press(utils.getByText("dictarPedidos.viewOnline"));
     });
     await waitFor(() => expect(mockAlert).toHaveBeenCalled());
   });
 
-  it("success step: WhatsApp success / failure / exception paths", async () => {
-    mockRecorderStop.mockResolvedValue({ uri: "file://r.m4a", durationMs: 1 });
-    mockCreateInforme.mockResolvedValue({ id: "inf-1" });
-    mockUploadRecording.mockResolvedValue("p");
-    mockTranscribeAudio.mockResolvedValue("Solicito hemograma");
-    mockSharePdf.mockResolvedValue(undefined);
-    mockRecorderPhase = "recording";
+  it("success step: view PDF alerts on failure with non-Error rejection", async () => {
+    mockSharePdf.mockResolvedValueOnce(undefined);
+    const utils = await stopAndReviewWith("Solicito hemograma");
+    await waitFor(() =>
+      expect(utils.getByText("dictarPedidos.itemsLabel")).toBeTruthy(),
+    );
+    await act(async () => {
+      fireEvent.press(utils.getByText(/^dictarPedidos\.generate:/));
+    });
+    await waitFor(() =>
+      expect(utils.getByText("dictarPedidos.successMessage")).toBeTruthy(),
+    );
+    mockSharePdf.mockRejectedValueOnce("plain");
+    await act(async () => {
+      fireEvent.press(utils.getByText("dictarPedidos.viewOnline"));
+    });
+    await waitFor(() => expect(mockAlert).toHaveBeenCalled());
+  });
 
+  it("success step: WhatsApp success / error-with-msg / error-no-msg / Error throw / non-Error throw", async () => {
+    mockSharePdf.mockResolvedValue(undefined);
+    const utils = await stopAndReviewWith("Solicito hemograma");
+    await waitFor(() =>
+      expect(utils.getByText("dictarPedidos.itemsLabel")).toBeTruthy(),
+    );
+    await act(async () => {
+      fireEvent.press(utils.getByText(/^dictarPedidos\.generate:/));
+    });
+    await waitFor(() =>
+      expect(utils.getByText("whatsappPedidosButton.label")).toBeTruthy(),
+    );
+
+    mockSendPedidosPatient.mockResolvedValueOnce({ success: true });
+    await act(async () => {
+      fireEvent.press(utils.getByText("whatsappPedidosButton.label"));
+    });
+    await waitFor(() => expect(mockAlert.mock.calls.length).toBe(1));
+
+    mockSendPedidosPatient.mockResolvedValueOnce({ success: false, error: "x" });
+    await act(async () => {
+      fireEvent.press(utils.getByText("whatsappPedidosButton.label"));
+    });
+    await waitFor(() => expect(mockAlert.mock.calls.length).toBe(2));
+
+    mockSendPedidosPatient.mockResolvedValueOnce({ success: false });
+    await act(async () => {
+      fireEvent.press(utils.getByText("whatsappPedidosButton.label"));
+    });
+    await waitFor(() => expect(mockAlert.mock.calls.length).toBe(3));
+
+    mockSendPedidosPatient.mockRejectedValueOnce(new Error("net"));
+    await act(async () => {
+      fireEvent.press(utils.getByText("whatsappPedidosButton.label"));
+    });
+    await waitFor(() => expect(mockAlert.mock.calls.length).toBe(4));
+
+    mockSendPedidosPatient.mockRejectedValueOnce("plain");
+    await act(async () => {
+      fireEvent.press(utils.getByText("whatsappPedidosButton.label"));
+    });
+    await waitFor(() => expect(mockAlert.mock.calls.length).toBe(5));
+  });
+
+  it("success step without phone hides WhatsApp button", async () => {
+    mockSharePdf.mockResolvedValue(undefined);
+    mockDictationPhase = "recording";
+    mockDictationStop.mockReturnValueOnce("Solicito hemograma");
+    const u2 = renderModal({ patientPhone: null });
+    await act(async () => {
+      fireEvent.press(u2.getByLabelText("dictarPedidos.btnStop"));
+    });
+    await waitFor(() =>
+      expect(u2.getByText("dictarPedidos.itemsLabel")).toBeTruthy(),
+    );
+    await act(async () => {
+      fireEvent.press(u2.getByText(/^dictarPedidos\.generate:/));
+    });
+    await waitFor(() =>
+      expect(u2.getByText("dictarPedidos.successMessage")).toBeTruthy(),
+    );
+    expect(u2.queryByText("whatsappPedidosButton.label")).toBeNull();
+  });
+
+  it("generateAnother resets dictation and returns to idle", async () => {
+    mockSharePdf.mockResolvedValue(undefined);
+    const utils = await stopAndReviewWith("Solicito hemograma");
+    await waitFor(() =>
+      expect(utils.getByText("dictarPedidos.itemsLabel")).toBeTruthy(),
+    );
+    await act(async () => {
+      fireEvent.press(utils.getByText(/^dictarPedidos\.generate:/));
+    });
+    await waitFor(() =>
+      expect(utils.getByText("dictarPedidos.generateAnother")).toBeTruthy(),
+    );
+    fireEvent.press(utils.getByText("dictarPedidos.generateAnother"));
+    expect(mockDictationReset).toHaveBeenCalled();
+  });
+
+  it("editing items text updates the generate count", async () => {
+    const utils = await stopAndReviewWith("Solicito A");
+    await waitFor(() =>
+      expect(utils.getByText("dictarPedidos.itemsLabel")).toBeTruthy(),
+    );
+    fireEvent.changeText(
+      utils.getByPlaceholderText("dictarPedidos.itemsPlaceholder"),
+      "- A\n- B\n- C",
+    );
+    expect(utils.getByText(/dictarPedidos\.generate:.*"count":3/)).toBeTruthy();
+  });
+
+  it("WhatsApp uses default `es` locale when i18n language is undefined", async () => {
+    mockLanguage = undefined;
+    mockSharePdf.mockResolvedValue(undefined);
+    mockSendPedidosPatient.mockResolvedValueOnce({ success: true });
+    mockDictationPhase = "recording";
+    mockDictationStop.mockReturnValueOnce("Solicito A");
     const { getByLabelText, getByText } = renderModal();
     await act(async () => {
       fireEvent.press(getByLabelText("dictarPedidos.btnStop"));
     });
+    await waitFor(() =>
+      expect(getByText("dictarPedidos.itemsLabel")).toBeTruthy(),
+    );
     await act(async () => {
       fireEvent.press(getByText(/^dictarPedidos\.generate:/));
     });
     await waitFor(() =>
       expect(getByText("whatsappPedidosButton.label")).toBeTruthy(),
     );
-
-    mockSendPedidosPatient.mockResolvedValueOnce({ success: true });
     await act(async () => {
       fireEvent.press(getByText("whatsappPedidosButton.label"));
-    });
-    await waitFor(() => expect(mockAlert).toHaveBeenCalled());
-
-    mockSendPedidosPatient.mockResolvedValueOnce({ success: false, error: "x" });
-    await act(async () => {
-      fireEvent.press(getByText("whatsappPedidosButton.label"));
-    });
-    await waitFor(() => expect(mockAlert.mock.calls.length).toBeGreaterThan(1));
-
-    mockSendPedidosPatient.mockResolvedValueOnce({ success: false });
-    await act(async () => {
-      fireEvent.press(getByText("whatsappPedidosButton.label"));
-    });
-    await waitFor(() => expect(mockAlert.mock.calls.length).toBeGreaterThan(2));
-
-    mockSendPedidosPatient.mockRejectedValueOnce(new Error("net"));
-    await act(async () => {
-      fireEvent.press(getByText("whatsappPedidosButton.label"));
-    });
-    await waitFor(() => expect(mockAlert.mock.calls.length).toBeGreaterThan(3));
-
-    mockSendPedidosPatient.mockRejectedValueOnce("plain");
-    await act(async () => {
-      fireEvent.press(getByText("whatsappPedidosButton.label"));
-    });
-    await waitFor(() => expect(mockAlert.mock.calls.length).toBeGreaterThan(4));
-  });
-
-  it("success step without phone hides WhatsApp button", async () => {
-    mockRecorderStop.mockResolvedValue({ uri: "file://r.m4a", durationMs: 1 });
-    mockCreateInforme.mockResolvedValue({ id: "inf-1" });
-    mockUploadRecording.mockResolvedValue("p");
-    mockTranscribeAudio.mockResolvedValue("Solicito hemograma");
-    mockSharePdf.mockResolvedValue(undefined);
-    mockRecorderPhase = "recording";
-
-    const { getByLabelText, getByText, queryByText } = renderModal({
-      patientPhone: null,
-    });
-    await act(async () => {
-      fireEvent.press(getByLabelText("dictarPedidos.btnStop"));
-    });
-    await act(async () => {
-      fireEvent.press(getByText(/^dictarPedidos\.generate:/));
     });
     await waitFor(() =>
-      expect(getByText("dictarPedidos.successMessage")).toBeTruthy(),
+      expect(mockSendPedidosPatient).toHaveBeenCalledWith(
+        expect.objectContaining({ locale: "es" }),
+      ),
     );
-    expect(queryByText("whatsappPedidosButton.label")).toBeNull();
   });
 
-  it("generateAnother returns to idle", async () => {
-    mockRecorderStop.mockResolvedValue({ uri: "file://r.m4a", durationMs: 1 });
-    mockCreateInforme.mockResolvedValue({ id: "inf-1" });
-    mockUploadRecording.mockResolvedValue("p");
-    mockTranscribeAudio.mockResolvedValue("Solicito hemograma");
-    mockSharePdf.mockResolvedValue(undefined);
-    mockRecorderPhase = "recording";
+  function walkAndFireStyles(instance: {
+    props?: Record<string, unknown>;
+    children?: unknown[];
+  }) {
+    const style = instance.props?.style;
+    if (typeof style === "function") {
+      (style as (s: { pressed: boolean }) => unknown)({ pressed: true });
+      (style as (s: { pressed: boolean }) => unknown)({ pressed: false });
+    }
+    const children = instance.children as
+      | { props?: Record<string, unknown>; children?: unknown[] }[]
+      | undefined;
+    if (Array.isArray(children)) {
+      for (const c of children) {
+        if (c && typeof c === "object") walkAndFireStyles(c);
+      }
+    }
+  }
 
-    const { getByLabelText, getByText } = renderModal();
-    await act(async () => {
-      fireEvent.press(getByLabelText("dictarPedidos.btnStop"));
+  it("press style callbacks invoke pressed branch (idle start)", () => {
+    const { UNSAFE_root } = renderModal();
+    walkAndFireStyles(UNSAFE_root as unknown as {
+      props?: Record<string, unknown>;
+      children?: unknown[];
     });
-    await act(async () => {
-      fireEvent.press(getByText(/^dictarPedidos\.generate:/));
+  });
+
+  it("press style callbacks invoke pressed branch (recording pause + stop)", () => {
+    mockDictationPhase = "recording";
+    const { UNSAFE_root } = renderModal();
+    walkAndFireStyles(UNSAFE_root as unknown as {
+      props?: Record<string, unknown>;
+      children?: unknown[];
     });
-    await waitFor(() =>
-      expect(getByText("dictarPedidos.generateAnother")).toBeTruthy(),
+  });
+
+  it("press style callbacks invoke pressed branch (paused resume + stop)", () => {
+    mockDictationPhase = "paused";
+    const { UNSAFE_root } = renderModal();
+    walkAndFireStyles(UNSAFE_root as unknown as {
+      props?: Record<string, unknown>;
+      children?: unknown[];
+    });
+  });
+
+  it("renders the generating spinner while sharePdf is in flight", async () => {
+    let resolveShare: (() => void) | undefined;
+    mockSharePdf.mockReturnValueOnce(
+      new Promise<void>((resolve) => {
+        resolveShare = resolve;
+      }),
     );
-    fireEvent.press(getByText("dictarPedidos.generateAnother"));
-    expect(mockRecorderReset).toHaveBeenCalled();
-  });
-
-  it("editing detected items updates the count in the generate label", async () => {
-    mockRecorderStop.mockResolvedValue({ uri: "file://r.m4a", durationMs: 1 });
-    mockCreateInforme.mockResolvedValue({ id: "inf-1" });
-    mockUploadRecording.mockResolvedValue("p");
-    mockTranscribeAudio.mockResolvedValue("Solicito A");
-    mockRecorderPhase = "recording";
-
-    const { getByLabelText, getByPlaceholderText, getByText } = renderModal();
+    const utils = await stopAndReviewWith("Solicito X");
+    await waitFor(() =>
+      expect(utils.getByText("dictarPedidos.itemsLabel")).toBeTruthy(),
+    );
     await act(async () => {
-      fireEvent.press(getByLabelText("dictarPedidos.btnStop"));
+      fireEvent.press(utils.getByText(/^dictarPedidos\.generate:/));
     });
     await waitFor(() =>
-      expect(getByText("dictarPedidos.itemsLabel")).toBeTruthy(),
+      expect(utils.getByText("dictarPedidos.generating")).toBeTruthy(),
+    );
+    await act(async () => {
+      resolveShare?.();
+    });
+    await waitFor(() =>
+      expect(utils.getByText("dictarPedidos.successMessage")).toBeTruthy(),
+    );
+  });
+
+  it("KeyboardAvoidingView uses undefined behavior on Android", () => {
+    const RN = require("react-native");
+    const originalOS = RN.Platform.OS;
+    RN.Platform.OS = "android";
+    try {
+      const { getByText } = renderModal();
+      expect(getByText("dictarPedidos.title")).toBeTruthy();
+    } finally {
+      RN.Platform.OS = originalOS;
+    }
+  });
+
+  it("editing diagnostico updates the value sent to sharePdf", async () => {
+    mockSharePdf.mockResolvedValue(undefined);
+    const utils = await stopAndReviewWith("Solicito A");
+    await waitFor(() =>
+      expect(utils.getByText("dictarPedidos.itemsLabel")).toBeTruthy(),
     );
     fireEvent.changeText(
-      getByPlaceholderText("dictarPedidos.itemsPlaceholder"),
-      "- A\n- B\n- C",
-    );
-    expect(getByText(/dictarPedidos\.generate:.*"count":3/)).toBeTruthy();
-  });
-
-  it("editing the diagnostico field updates the value", async () => {
-    mockRecorderStop.mockResolvedValue({ uri: "file://r.m4a", durationMs: 1 });
-    mockCreateInforme.mockResolvedValue({ id: "inf-1" });
-    mockUploadRecording.mockResolvedValue("p");
-    mockTranscribeAudio.mockResolvedValue("Solicito A");
-    mockSharePdf.mockResolvedValue(undefined);
-    mockRecorderPhase = "recording";
-
-    const { getByLabelText, getByPlaceholderText, getByText } = renderModal();
-    await act(async () => {
-      fireEvent.press(getByLabelText("dictarPedidos.btnStop"));
-    });
-    await waitFor(() =>
-      expect(getByText("dictarPedidos.itemsLabel")).toBeTruthy(),
-    );
-    fireEvent.changeText(
-      getByPlaceholderText("dictarPedidos.diagnosticoPlaceholder"),
+      utils.getByPlaceholderText("dictarPedidos.diagnosticoPlaceholder"),
       "lumbalgia",
     );
     await act(async () => {
-      fireEvent.press(getByText(/^dictarPedidos\.generate:/));
+      fireEvent.press(utils.getByText(/^dictarPedidos\.generate:/));
     });
     await waitFor(() =>
       expect(mockSharePdf).toHaveBeenCalledWith(

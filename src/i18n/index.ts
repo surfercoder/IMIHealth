@@ -4,7 +4,7 @@ import i18nDefault, {
   type i18n as I18nInstance,
 } from "i18next";
 import { initReactI18next } from "react-i18next";
-import IntlMessageFormat from "intl-messageformat";
+import { IntlMessageFormat } from "intl-messageformat";
 import * as Localization from "expo-localization";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import en from "../../messages/en.json";

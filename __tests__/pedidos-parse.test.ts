@@ -60,6 +60,10 @@ describe("parseItemsText / itemsToText", () => {
     ]);
   });
 
+  it("skips hyphen-only lines (empty value after the hyphen)", () => {
+    expect(parseItemsText("- \n-  \n- Real")).toEqual(["Real"]);
+  });
+
   it("returns empty for blank input", () => {
     expect(parseItemsText("")).toEqual([]);
   });

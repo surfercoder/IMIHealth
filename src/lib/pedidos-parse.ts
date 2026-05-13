@@ -28,7 +28,7 @@ export function parseDictation(text: string): ParsedDictation {
 
   for (let i = 0; i < matches.length; i++) {
     const match = matches[i];
-    const start = (match.index ?? 0) + match[0].length;
+    const start = match.index + match[0].length;
 
     if (isDiagnosticoMarker(match[0])) {
       const tail = cleanFragment(text.slice(start));
@@ -45,12 +45,12 @@ export function parseDictation(text: string): ParsedDictation {
 }
 
 export function parseItemsText(text: string): string[] {
-  return text
-    .split("\n")
-    .map((line) => line.trim())
-    .filter((line) => line.startsWith("-"))
-    .map((line) => line.slice(1).trim())
-    .filter(Boolean);
+  return text.split("\n").flatMap((line) => {
+    const trimmed = line.trim();
+    if (!trimmed.startsWith("-")) return [];
+    const value = trimmed.slice(1).trim();
+    return value ? [value] : [];
+  });
 }
 
 export function itemsToText(items: string[]): string {

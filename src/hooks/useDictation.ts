@@ -8,7 +8,7 @@ import { activateKeepAwakeAsync, deactivateKeepAwake } from "expo-keep-awake";
 
 const KEEP_AWAKE_TAG = "imi-dictation";
 
-export type DictationPhase = "idle" | "recording" | "paused";
+type DictationPhase = "idle" | "recording" | "paused";
 
 interface State {
   phase: DictationPhase;
@@ -75,7 +75,7 @@ export function useDictation(): UseDictationResult {
   const elapsedBeforePauseRef = useRef<number>(0);
   const segmentStartRef = useRef<number | null>(null);
   const langRef = useRef<string>("es-AR");
-  const listenersRef = useRef<Array<{ remove: () => void }>>([]);
+  const listenersRef = useRef<{ remove: () => void }[]>([]);
   const shouldKeepRecognizingRef = useRef<boolean>(false);
   const restartTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -103,26 +103,23 @@ export function useDictation(): UseDictationResult {
     );
     const onEnd = ExpoSpeechRecognitionModule.addListener("end", () => {
       console.log("[dictation] end");
-      if (shouldKeepRecognizingRef.current) {
-        if (restartTimerRef.current) clearTimeout(restartTimerRef.current);
-        restartTimerRef.current = setTimeout(() => {
-          if (shouldKeepRecognizingRef.current) {
-            try {
-              ExpoSpeechRecognitionModule.start({
-                lang: langRef.current,
-                interimResults: true,
-                continuous: true,
-                maxAlternatives: 1,
-                ...(Platform.OS === "ios"
-                  ? { iosTaskHint: "dictation" as const }
-                  : {}),
-              });
-            } catch (e) {
-              console.warn("[dictation] restart failed", e);
-            }
-          }
-        }, 100);
-      }
+      if (!shouldKeepRecognizingRef.current) return;
+      if (restartTimerRef.current) clearTimeout(restartTimerRef.current);
+      restartTimerRef.current = setTimeout(() => {
+        try {
+          ExpoSpeechRecognitionModule.start({
+            lang: langRef.current,
+            interimResults: true,
+            continuous: true,
+            maxAlternatives: 1,
+            ...(Platform.OS === "ios"
+              ? { iosTaskHint: "dictation" as const }
+              : {}),
+          });
+        } catch (e) {
+          console.warn("[dictation] restart failed", e);
+        }
+      }, 100);
     });
     const onResult = ExpoSpeechRecognitionModule.addListener(
       "result",
@@ -288,11 +285,10 @@ export function useDictation(): UseDictationResult {
   useEffect(() => {
     if (state.phase !== "recording") return undefined;
     const interval = setInterval(() => {
-      const live =
-        segmentStartRef.current != null ? Date.now() - segmentStartRef.current : 0;
+      const startedAt = segmentStartRef.current as number;
       dispatch({
         type: "tick",
-        durationMs: elapsedBeforePauseRef.current + live,
+        durationMs: elapsedBeforePauseRef.current + (Date.now() - startedAt),
       });
     }, 250);
     return () => clearInterval(interval);

@@ -1,4 +1,4 @@
-import { fireEvent, render, waitFor } from "@testing-library/react-native";
+import { act, fireEvent, render, waitFor } from "@testing-library/react-native";
 
 jest.mock("react-native-svg", () => {
   const React = require("react");
@@ -63,8 +63,14 @@ jest.mock("react-native/Libraries/Alert/Alert", () => ({
   default: { alert: (...a: unknown[]) => mockAlert(...a) },
 }));
 
+const mockDictarPedidosProps: { current: Record<string, unknown> | null } = {
+  current: null,
+};
 jest.mock("@/src/components/DictarPedidosModal", () => ({
-  DictarPedidosModal: () => null,
+  DictarPedidosModal: (props: Record<string, unknown>) => {
+    mockDictarPedidosProps.current = props;
+    return null;
+  },
 }));
 
 import PatientDetailScreen from "@/app/(app)/patient/[id]/index";
@@ -192,6 +198,39 @@ describe("PatientDetailScreen", () => {
       loading: false,
     });
     render(<PatientDetailScreen />);
+  });
+
+  it("dictar pedidos trigger opens the modal and onClose closes it", () => {
+    mockUsePatientDetail.mockReturnValue({
+      patient,
+      informes: [],
+      loading: false,
+    });
+    mockDictarPedidosProps.current = null;
+    const { getByText } = render(<PatientDetailScreen />);
+    expect(mockDictarPedidosProps.current).toMatchObject({
+      visible: false,
+      patientId: "p",
+      patientName: "Ana",
+      patientPhone: "+1",
+    });
+    fireEvent.press(getByText("dictarPedidos.trigger"));
+    expect(mockDictarPedidosProps.current).toMatchObject({ visible: true });
+    act(() => {
+      (mockDictarPedidosProps.current!.onClose as () => void)();
+    });
+    expect(mockDictarPedidosProps.current).toMatchObject({ visible: false });
+  });
+
+  it("dictar pedidos modal receives null phone when patient.phone is missing", () => {
+    mockUsePatientDetail.mockReturnValue({
+      patient: { ...patient, phone: null },
+      informes: [],
+      loading: false,
+    });
+    mockDictarPedidosProps.current = null;
+    render(<PatientDetailScreen />);
+    expect(mockDictarPedidosProps.current).toMatchObject({ patientPhone: null });
   });
 
   it("delete is a no-op when patient is null at handler time", () => {

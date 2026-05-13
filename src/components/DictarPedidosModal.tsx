@@ -20,7 +20,7 @@ import {
   Input,
   Text,
 } from "@/src/components/ui";
-import { useDictation } from "@/src/hooks/useDictation";
+import { useDictation, type UseDictationResult } from "@/src/hooks/useDictation";
 import { formatDuration } from "@/src/hooks/useRecorder";
 import { sharePdf } from "@/src/lib/api/pdf";
 import { sendPedidosPatientWhatsApp } from "@/src/lib/api/whatsapp";
@@ -92,8 +92,6 @@ interface Props {
 
 function speechLangFor(localeCode: string): string {
   const base = (localeCode || "es").split("-")[0].toLowerCase();
-  // `es-AR` is not in iOS SFSpeechRecognizer's supported list — use Latin
-  // American Spanish (`es-419`) as the neutral fallback for Spanish.
   return base === "en" ? "en-US" : "es-419";
 }
 
@@ -110,10 +108,6 @@ export function DictarPedidosModal({
 
   const items = parseItemsText(state.itemsText);
   const itemCount = items.length;
-  const isRecording = dictation.phase === "recording";
-  const isPaused = dictation.phase === "paused";
-  const isIdle = dictation.phase === "idle";
-  const isWorking = state.phase === "generating";
 
   async function handleStartRecording() {
     try {
@@ -124,10 +118,6 @@ export function DictarPedidosModal({
         e instanceof Error ? e.message : String(e),
       );
     }
-  }
-
-  function handlePause() {
-    dictation.pause();
   }
 
   async function handleResume() {
@@ -163,7 +153,6 @@ export function DictarPedidosModal({
   }
 
   async function handleGenerate() {
-    if (itemCount === 0) return;
     const diagnostico = state.diagnostico.trim() || null;
     dispatch({ type: "setPhase", phase: "generating" });
     try {
@@ -203,11 +192,10 @@ export function DictarPedidosModal({
   }, [patientId, items, state.diagnostico, t]);
 
   async function handleSendWhatsApp() {
-    if (!patientPhone) return;
     dispatch({ type: "setWaSending", busy: true });
     try {
       const res = await sendPedidosPatientWhatsApp({
-        to: patientPhone,
+        to: patientPhone as string,
         patientId,
         patientName,
         locale: i18n.language ?? "es",
@@ -249,161 +237,28 @@ export function DictarPedidosModal({
         style={styles.container}
         behavior={Platform.OS === "ios" ? "padding" : undefined}
       >
-        <View style={styles.header}>
-          <View style={styles.headerText}>
-            <Text variant="title">{t("dictarPedidos.title")}</Text>
-            <Text variant="bodyMuted">
-              {t("dictarPedidos.description", { patientName })}
-            </Text>
-          </View>
-          <Pressable
-            onPress={handleClose}
-            accessibilityLabel={t("common.cancel")}
-            hitSlop={8}
-            style={styles.closeBtn}
-          >
-            <Icon name="close" size={24} color={colors.foreground} />
-          </Pressable>
-        </View>
+        <Header
+          title={t("dictarPedidos.title")}
+          description={t("dictarPedidos.description", { patientName })}
+          cancelLabel={t("common.cancel")}
+          onClose={handleClose}
+        />
 
         <ScrollView
           contentContainerStyle={styles.body}
           keyboardShouldPersistTaps="handled"
         >
           {state.phase === "idle" && (
-            <View style={styles.recordSection}>
-              <View style={styles.recordControls}>
-                {(isRecording || isPaused) && (
-                  <Text
-                    style={[
-                      styles.timer,
-                      isPaused ? styles.timerPaused : styles.timerRecording,
-                    ]}
-                  >
-                    {formatDuration(dictation.durationMs)}
-                  </Text>
-                )}
-
-                <View style={styles.buttonRow}>
-                  {isIdle && (
-                    <Pressable
-                      onPress={handleStartRecording}
-                      accessibilityRole="button"
-                      accessibilityLabel={t("dictarPedidos.btnStart")}
-                      style={({ pressed }) => [
-                        styles.recordBtn,
-                        pressed && styles.btnPressed,
-                      ]}
-                    >
-                      <Icon name="mic" size={36} color="#fff" />
-                    </Pressable>
-                  )}
-
-                  {isRecording && (
-                    <>
-                      <Pressable
-                        onPress={handlePause}
-                        accessibilityRole="button"
-                        accessibilityLabel={t("dictarPedidos.btnPause")}
-                        style={({ pressed }) => [
-                          styles.secondaryBtn,
-                          pressed && styles.btnPressed,
-                        ]}
-                      >
-                        <Icon name="pause" size={24} color={colors.foreground} />
-                      </Pressable>
-                      <Pressable
-                        onPress={handleStopRecording}
-                        accessibilityRole="button"
-                        accessibilityLabel={t("dictarPedidos.btnStop")}
-                        style={({ pressed }) => [
-                          styles.recordBtn,
-                          pressed && styles.btnPressed,
-                        ]}
-                      >
-                        <View style={styles.stopSquare} />
-                      </Pressable>
-                    </>
-                  )}
-
-                  {isPaused && (
-                    <>
-                      <Pressable
-                        onPress={handleResume}
-                        accessibilityRole="button"
-                        accessibilityLabel={t("dictarPedidos.btnResume")}
-                        style={({ pressed }) => [
-                          styles.secondaryBtn,
-                          pressed && styles.btnPressed,
-                        ]}
-                      >
-                        <Icon name="mic" size={22} color={colors.foreground} />
-                      </Pressable>
-                      <Pressable
-                        onPress={handleStopRecording}
-                        accessibilityRole="button"
-                        accessibilityLabel={t("dictarPedidos.btnStop")}
-                        style={({ pressed }) => [
-                          styles.recordBtn,
-                          pressed && styles.btnPressed,
-                        ]}
-                      >
-                        <View style={styles.stopSquare} />
-                      </Pressable>
-                    </>
-                  )}
-                </View>
-
-                <Text variant="bodyMuted" center>
-                  {isRecording
-                    ? t("dictarPedidos.recordingHint")
-                    : isPaused
-                      ? t("dictarPedidos.pausedHint")
-                      : t("dictarPedidos.idleHint")}
-                </Text>
-              </View>
-
-              {(isRecording || isPaused) && dictation.liveTranscript.length > 0 && (
-                <Card style={styles.transcriptCard}>
-                  <CardContent style={styles.transcriptContent}>
-                    <Text variant="label" style={styles.transcriptLabel}>
-                      {t("dictarPedidos.liveTranscript")}
-                    </Text>
-                    <Text variant="body" style={styles.transcriptText}>
-                      {dictation.liveTranscript}
-                    </Text>
-                  </CardContent>
-                </Card>
-              )}
-
-              {dictation.error && (
-                <Card style={styles.transcriptCard}>
-                  <CardContent style={styles.transcriptContent}>
-                    <Text variant="label" style={styles.errorLabel}>
-                      {t("dictarPedidos.micErrorTitle")}
-                    </Text>
-                    <Text variant="body" style={styles.transcriptText}>
-                      {dictation.error}
-                    </Text>
-                  </CardContent>
-                </Card>
-              )}
-
-              <Card style={styles.instructionsCard}>
-                <CardContent style={styles.instructionsContent}>
-                  <Text variant="label" style={styles.instructionsTitle}>
-                    {t("dictarPedidos.howItWorks")}
-                  </Text>
-                  <NumberedStep index={1} text={t("dictarPedidos.step1")} />
-                  <NumberedStep index={2} text={t("dictarPedidos.step2")} />
-                  <NumberedStep index={3} text={t("dictarPedidos.step3")} />
-                  <NumberedStep index={4} text={t("dictarPedidos.step4")} />
-                </CardContent>
-              </Card>
-            </View>
+            <IdleSection
+              dictation={dictation}
+              onStart={handleStartRecording}
+              onPause={dictation.pause}
+              onResume={handleResume}
+              onStop={handleStopRecording}
+            />
           )}
 
-          {isWorking && (
+          {state.phase === "generating" && (
             <View style={styles.busy}>
               <ActivityIndicator color={colors.primary} size="large" />
               <Text variant="title" center>
@@ -413,116 +268,403 @@ export function DictarPedidosModal({
           )}
 
           {state.phase === "review" && (
-            <View style={styles.reviewSection}>
-              <FormField
-                label={t("dictarPedidos.itemsLabel")}
-                hint={t("dictarPedidos.itemsHint", { count: itemCount })}
-              >
-                <Input
-                  placeholder={t("dictarPedidos.itemsPlaceholder")}
-                  value={state.itemsText}
-                  onChangeText={(value) =>
-                    dispatch({ type: "setItemsText", value })
-                  }
-                  multiline
-                  numberOfLines={6}
-                  style={styles.multiline}
-                />
-              </FormField>
-              <FormField label={t("dictarPedidos.diagnosticoLabel")}>
-                <Input
-                  placeholder={t("dictarPedidos.diagnosticoPlaceholder")}
-                  value={state.diagnostico}
-                  onChangeText={(value) =>
-                    dispatch({ type: "setDiagnostico", value })
-                  }
-                  multiline
-                  numberOfLines={2}
-                  style={styles.multilineShort}
-                />
-              </FormField>
-            </View>
+            <ReviewSection
+              itemsText={state.itemsText}
+              diagnostico={state.diagnostico}
+              itemCount={itemCount}
+              onChangeItemsText={(value) =>
+                dispatch({ type: "setItemsText", value })
+              }
+              onChangeDiagnostico={(value) =>
+                dispatch({ type: "setDiagnostico", value })
+              }
+            />
           )}
 
           {state.phase === "success" && (
-            <Card>
-              <CardContent>
-                <View style={styles.successIcon}>
-                  <Icon
-                    name="document-text-outline"
-                    size={36}
-                    color={colors.primary}
-                  />
-                </View>
-                <Text variant="title" center>
-                  {t("dictarPedidos.successMessage")}
-                </Text>
-                <Text variant="bodyMuted" center>
-                  {t("dictarPedidos.pedidoCount", { count: itemCount })}
-                </Text>
-                <View style={styles.successActions}>
-                  <Button
-                    title={t("dictarPedidos.viewOnline")}
-                    variant="outline"
-                    leftIcon={
-                      <Icon
-                        name="documents-outline"
-                        size={16}
-                        color={colors.foreground}
-                      />
-                    }
-                    onPress={handleViewPdf}
-                    loading={state.pdfBusy}
-                  />
-                  {patientPhone ? (
-                    <Button
-                      title={t("whatsappPedidosButton.label")}
-                      onPress={handleSendWhatsApp}
-                      loading={state.waSending}
-                      leftIcon={
-                        <Icon
-                          name="logo-whatsapp"
-                          size={16}
-                          color={colors.primaryForeground}
-                        />
-                      }
-                    />
-                  ) : null}
-                  <Button
-                    title={t("dictarPedidos.generateAnother")}
-                    variant="ghost"
-                    onPress={handleResetToIdle}
-                  />
-                </View>
-              </CardContent>
-            </Card>
+            <SuccessSection
+              itemCount={itemCount}
+              patientPhone={patientPhone}
+              pdfBusy={state.pdfBusy}
+              waSending={state.waSending}
+              onViewPdf={handleViewPdf}
+              onSendWhatsApp={handleSendWhatsApp}
+              onGenerateAnother={handleResetToIdle}
+            />
           )}
         </ScrollView>
 
         {state.phase === "review" && (
-          <View style={styles.footer}>
+          <ReviewFooter
+            itemCount={itemCount}
+            onRecordAgain={handleResetToIdle}
+            onGenerate={handleGenerate}
+          />
+        )}
+      </KeyboardAvoidingView>
+    </Modal>
+  );
+}
+
+function Header({
+  title,
+  description,
+  cancelLabel,
+  onClose,
+}: {
+  title: string;
+  description: string;
+  cancelLabel: string;
+  onClose: () => void;
+}) {
+  return (
+    <View style={styles.header}>
+      <View style={styles.headerText}>
+        <Text variant="title">{title}</Text>
+        <Text variant="bodyMuted">{description}</Text>
+      </View>
+      <Pressable
+        onPress={onClose}
+        accessibilityLabel={cancelLabel}
+        hitSlop={8}
+        style={styles.closeBtn}
+      >
+        <Icon name="close" size={24} color={colors.foreground} />
+      </Pressable>
+    </View>
+  );
+}
+
+function IdleSection({
+  dictation,
+  onStart,
+  onPause,
+  onResume,
+  onStop,
+}: {
+  dictation: UseDictationResult;
+  onStart: () => void;
+  onPause: () => void;
+  onResume: () => void;
+  onStop: () => void;
+}) {
+  const { t } = useTranslation();
+  const isRecording = dictation.phase === "recording";
+  const isPaused = dictation.phase === "paused";
+  const isIdle = dictation.phase === "idle";
+
+  return (
+    <View style={styles.recordSection}>
+      <View style={styles.recordControls}>
+        {(isRecording || isPaused) && (
+          <Text
+            style={[
+              styles.timer,
+              isPaused ? styles.timerPaused : styles.timerRecording,
+            ]}
+          >
+            {formatDuration(dictation.durationMs)}
+          </Text>
+        )}
+
+        <RecordButtonRow
+          isIdle={isIdle}
+          isRecording={isRecording}
+          isPaused={isPaused}
+          onStart={onStart}
+          onPause={onPause}
+          onResume={onResume}
+          onStop={onStop}
+        />
+
+        <Text variant="bodyMuted" center>
+          {isRecording
+            ? t("dictarPedidos.recordingHint")
+            : isPaused
+              ? t("dictarPedidos.pausedHint")
+              : t("dictarPedidos.idleHint")}
+        </Text>
+      </View>
+
+      {(isRecording || isPaused) && dictation.liveTranscript.length > 0 && (
+        <Card style={styles.transcriptCard}>
+          <CardContent style={styles.transcriptContent}>
+            <Text variant="label" style={styles.transcriptLabel}>
+              {t("dictarPedidos.liveTranscript")}
+            </Text>
+            <Text variant="body" style={styles.transcriptText}>
+              {dictation.liveTranscript}
+            </Text>
+          </CardContent>
+        </Card>
+      )}
+
+      {dictation.error && (
+        <Card style={styles.transcriptCard}>
+          <CardContent style={styles.transcriptContent}>
+            <Text variant="label" style={styles.errorLabel}>
+              {t("dictarPedidos.micErrorTitle")}
+            </Text>
+            <Text variant="body" style={styles.transcriptText}>
+              {dictation.error}
+            </Text>
+          </CardContent>
+        </Card>
+      )}
+
+      <Card style={styles.instructionsCard}>
+        <CardContent style={styles.instructionsContent}>
+          <Text variant="label" style={styles.instructionsTitle}>
+            {t("dictarPedidos.howItWorks")}
+          </Text>
+          <NumberedStep index={1} text={t("dictarPedidos.step1")} />
+          <NumberedStep index={2} text={t("dictarPedidos.step2")} />
+          <NumberedStep index={3} text={t("dictarPedidos.step3")} />
+          <NumberedStep index={4} text={t("dictarPedidos.step4")} />
+        </CardContent>
+      </Card>
+    </View>
+  );
+}
+
+function RecordButtonRow({
+  isIdle,
+  isRecording,
+  isPaused,
+  onStart,
+  onPause,
+  onResume,
+  onStop,
+}: {
+  isIdle: boolean;
+  isRecording: boolean;
+  isPaused: boolean;
+  onStart: () => void;
+  onPause: () => void;
+  onResume: () => void;
+  onStop: () => void;
+}) {
+  const { t } = useTranslation();
+  return (
+    <View style={styles.buttonRow}>
+      {isIdle && (
+        <Pressable
+          onPress={onStart}
+          accessibilityRole="button"
+          accessibilityLabel={t("dictarPedidos.btnStart")}
+          style={({ pressed }) => [
+            styles.recordBtn,
+            pressed && styles.btnPressed,
+          ]}
+        >
+          <Icon name="mic" size={36} color="#fff" />
+        </Pressable>
+      )}
+
+      {isRecording && (
+        <>
+          <Pressable
+            onPress={onPause}
+            accessibilityRole="button"
+            accessibilityLabel={t("dictarPedidos.btnPause")}
+            style={({ pressed }) => [
+              styles.secondaryBtn,
+              pressed && styles.btnPressed,
+            ]}
+          >
+            <Icon name="pause" size={24} color={colors.foreground} />
+          </Pressable>
+          <Pressable
+            onPress={onStop}
+            accessibilityRole="button"
+            accessibilityLabel={t("dictarPedidos.btnStop")}
+            style={({ pressed }) => [
+              styles.recordBtn,
+              pressed && styles.btnPressed,
+            ]}
+          >
+            <View style={styles.stopSquare} />
+          </Pressable>
+        </>
+      )}
+
+      {isPaused && (
+        <>
+          <Pressable
+            onPress={onResume}
+            accessibilityRole="button"
+            accessibilityLabel={t("dictarPedidos.btnResume")}
+            style={({ pressed }) => [
+              styles.secondaryBtn,
+              pressed && styles.btnPressed,
+            ]}
+          >
+            <Icon name="mic" size={22} color={colors.foreground} />
+          </Pressable>
+          <Pressable
+            onPress={onStop}
+            accessibilityRole="button"
+            accessibilityLabel={t("dictarPedidos.btnStop")}
+            style={({ pressed }) => [
+              styles.recordBtn,
+              pressed && styles.btnPressed,
+            ]}
+          >
+            <View style={styles.stopSquare} />
+          </Pressable>
+        </>
+      )}
+    </View>
+  );
+}
+
+function ReviewSection({
+  itemsText,
+  diagnostico,
+  itemCount,
+  onChangeItemsText,
+  onChangeDiagnostico,
+}: {
+  itemsText: string;
+  diagnostico: string;
+  itemCount: number;
+  onChangeItemsText: (v: string) => void;
+  onChangeDiagnostico: (v: string) => void;
+}) {
+  const { t } = useTranslation();
+  return (
+    <View style={styles.reviewSection}>
+      <FormField
+        label={t("dictarPedidos.itemsLabel")}
+        hint={t("dictarPedidos.itemsHint", { count: itemCount })}
+      >
+        <Input
+          placeholder={t("dictarPedidos.itemsPlaceholder")}
+          value={itemsText}
+          onChangeText={onChangeItemsText}
+          multiline
+          numberOfLines={6}
+          style={styles.multiline}
+        />
+      </FormField>
+      <FormField label={t("dictarPedidos.diagnosticoLabel")}>
+        <Input
+          placeholder={t("dictarPedidos.diagnosticoPlaceholder")}
+          value={diagnostico}
+          onChangeText={onChangeDiagnostico}
+          multiline
+          numberOfLines={2}
+          style={styles.multilineShort}
+        />
+      </FormField>
+    </View>
+  );
+}
+
+function SuccessSection({
+  itemCount,
+  patientPhone,
+  pdfBusy,
+  waSending,
+  onViewPdf,
+  onSendWhatsApp,
+  onGenerateAnother,
+}: {
+  itemCount: number;
+  patientPhone: string | null;
+  pdfBusy: boolean;
+  waSending: boolean;
+  onViewPdf: () => void;
+  onSendWhatsApp: () => void;
+  onGenerateAnother: () => void;
+}) {
+  const { t } = useTranslation();
+  return (
+    <Card>
+      <CardContent>
+        <View style={styles.successIcon}>
+          <Icon
+            name="document-text-outline"
+            size={36}
+            color={colors.primary}
+          />
+        </View>
+        <Text variant="title" center>
+          {t("dictarPedidos.successMessage")}
+        </Text>
+        <Text variant="bodyMuted" center>
+          {t("dictarPedidos.pedidoCount", { count: itemCount })}
+        </Text>
+        <View style={styles.successActions}>
+          <Button
+            title={t("dictarPedidos.viewOnline")}
+            variant="outline"
+            leftIcon={
+              <Icon
+                name="documents-outline"
+                size={16}
+                color={colors.foreground}
+              />
+            }
+            onPress={onViewPdf}
+            loading={pdfBusy}
+          />
+          {patientPhone ? (
             <Button
-              title={t("dictarPedidos.recordAgain")}
-              variant="outline"
-              onPress={handleResetToIdle}
-              leftIcon={<Icon name="mic" size={16} color={colors.foreground} />}
-            />
-            <Button
-              title={t("dictarPedidos.generate", { count: itemCount })}
-              onPress={handleGenerate}
-              disabled={itemCount === 0}
+              title={t("whatsappPedidosButton.label")}
+              onPress={onSendWhatsApp}
+              loading={waSending}
               leftIcon={
                 <Icon
-                  name="document-text-outline"
+                  name="logo-whatsapp"
                   size={16}
                   color={colors.primaryForeground}
                 />
               }
             />
-          </View>
-        )}
-      </KeyboardAvoidingView>
-    </Modal>
+          ) : null}
+          <Button
+            title={t("dictarPedidos.generateAnother")}
+            variant="ghost"
+            onPress={onGenerateAnother}
+          />
+        </View>
+      </CardContent>
+    </Card>
+  );
+}
+
+function ReviewFooter({
+  itemCount,
+  onRecordAgain,
+  onGenerate,
+}: {
+  itemCount: number;
+  onRecordAgain: () => void;
+  onGenerate: () => void;
+}) {
+  const { t } = useTranslation();
+  return (
+    <View style={styles.footer}>
+      <Button
+        title={t("dictarPedidos.recordAgain")}
+        variant="outline"
+        onPress={onRecordAgain}
+        leftIcon={<Icon name="mic" size={16} color={colors.foreground} />}
+      />
+      <Button
+        title={t("dictarPedidos.generate", { count: itemCount })}
+        onPress={onGenerate}
+        disabled={itemCount === 0}
+        leftIcon={
+          <Icon
+            name="document-text-outline"
+            size={16}
+            color={colors.primaryForeground}
+          />
+        }
+      />
+    </View>
   );
 }
 

@@ -34,7 +34,7 @@ describe("uploadRecording", () => {
     expect(mockUpload).toHaveBeenCalledWith(
       "d/i/recording.m4a",
       expect.any(Uint8Array),
-      expect.objectContaining({ contentType: "audio/m4a", upsert: true }),
+      expect.objectContaining({ contentType: "audio/mp4", upsert: true }),
     );
   });
 
